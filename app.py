@@ -27,7 +27,7 @@ def index():
                     script, div, cdn_jss = generate_html_cluster_plot(file_path)
                     plot_components = {'script': script, 'div': div, 'cdn_jss': cdn_jss}
                 except Exception as e:
-                    error_message = f"Error processing file: {e}"
+                    error_message = f"Error: {e}"
             else:
                 error_message = "Invalid file type. Please upload a .txt file."
     return render_template('index.html', plot=plot_components, error=error_message)

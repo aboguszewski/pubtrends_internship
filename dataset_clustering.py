@@ -36,6 +36,7 @@ TSNE_PERPLEXITY = 30
 MAX_CALLS = 10
 CALL_PERIOD = 1
 
+
 # Generate a cluster plot for the datasets linked to PMIDs listed in file_path.
 # Return components for embedding the plot in HTML.
 def generate_html_cluster_plot(file_path):
@@ -78,21 +79,22 @@ def generate_cluster_plot(file_path):
     x, y = reduce_to_2d(normalized_reduced_matrix)
 
     # Generate the plot.
-    plot = figure(title="Datasets' Clusters",
+    plot = figure(title=f"Datasets' Clusters - {max(cluster_labels) + 1} clusters",
                   x_axis_label='first t-SNE component',
                   y_axis_label='second t-SNE component')
     source = ColumnDataSource(data={
         'x': x,
         'y': y,
         'cluster': cluster_labels,
+        'cluster_etiquette': [label + 1 for label in cluster_labels],
         'pmid': [linked_datasets[corpus_index_to_uid[index]] for index in range(len(metadata_corpus))]
     })
     colors = linear_cmap(field_name='cluster',
-                         palette=Paired[max(max(cluster_labels), 3)],
+                         palette=Paired[max(max(cluster_labels) + 1, 3)],
                          low=min(cluster_labels),
                          high=max(cluster_labels))
     hover = HoverTool()
-    hover.tooltips = [('PMID', '@pmid'), ('Cluster', '@cluster')]
+    hover.tooltips = [('PMID', '@pmid'), ('Cluster', '@cluster_etiquette')]
     plot.add_tools(hover)
     plot.scatter(x='x', y='y', source=source, color=colors, size=10, alpha=0.7)
 
