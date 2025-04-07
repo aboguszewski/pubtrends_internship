@@ -93,3 +93,8 @@ header h1 {
     display: flex;
     justify-content: center;
 }
+
+.dataset-count {
+    font-family: Helvetica, sans-serif;
+    font-style: italic;
+}

@@ -15,40 +15,37 @@ from bokeh.models import ColumnDataSource, HoverTool
 from bokeh.embed import components
 from bokeh.resources import CDN
 
-# TODO: FIX CONSTANTS DESC
+# I'm aware that putting API keys in a repository is not considered a good practice,
+# However considering it's private and the API is free I leave it here for the user's convenience.
 API_KEY = '65c3f552e2772659f31d7bb26b7c60605d08'
 
-
-# Below are some constants used throughout the module.
-# Most of them are chosen arbitrarily, except N_COMPONENTS.
-# This constant defines the number of dimensions to which the original tf-idf vectors are reduced.
-# After testing, 100 seemed to be a reasonable number,
-# because it accounted for 93% of the variation present in the vectors calculated from the example list.
-# Any bigger number resulted in diminishing returns.
-
-SEED = 42
-MIN_DF = 0.03
-MAX_DF = 0.95
-MAX_CLUSTERS = 10
-N_COMPONENTS = 100
-KMEANS_N_INIT = 10
-TSNE_PERPLEXITY = 30
+# API request frequency limit related constansts.
 MAX_CALLS = 10
 CALL_PERIOD = 1
 
+# Clustering related constants
+SEED = 42  # For determinism.
+MIN_DF = 0.03
+MAX_DF = 0.95
+MAX_CLUSTERS = 10
+N_COMPONENTS = 100  # Chosen, because on the test data it accounts for 93% of the variance. More give diminishing returns.
+KMEANS_N_INIT = 10
+TSNE_PERPLEXITY = 30
+# Not annotated clustering related constants can be arbitrarily modified if needed.
+
 
 # Generate a cluster plot for the datasets linked to PMIDs listed in file_path.
-# Return components for embedding the plot in HTML.
+# Return components for embedding the plot in HTML and number of found datasets.
 def generate_html_cluster_plot(file_path):
-    plot = generate_cluster_plot(file_path)
+    plot, dataset_number = generate_cluster_plot(file_path)
     script, div = components(plot)
     cdn_jss = CDN.js_files[0]
 
-    return script, div, cdn_jss
+    return script, div, cdn_jss, dataset_number
 
 
 # Generate a cluster plot for the datasets linked to PMIDs listed in file_path.
-# Return a Bokeh cluster plot.
+# Return a Bokeh cluster plot and number of found datasets.
 def generate_cluster_plot(file_path):
     # Read all PMIDs from the input file.
     pmids = set()
@@ -58,13 +55,13 @@ def generate_cluster_plot(file_path):
             pmids.add(pmid)
 
     session = Session()
-    print(f'PMIDs: {len(pmids)}')
+
     # Get all the datasets' UIDs linked to given PMID.
     linked_datasets = get_linked_datasets(pmids, session)
-    print(f'Datasets: {len(linked_datasets)}')
+
     # Create a corpus dictionary (with all datasets' metadata).
     dataset_metadata = get_datasets_metadata(linked_datasets, session)
-    print(f'Datasets with metadata: {len(dataset_metadata)}')
+
     # Build metadata text corpus for tf-idf.
     metadata_corpus = list(dataset_metadata.values())
     corpus_index_to_uid = list(dataset_metadata.keys())  # For conserving tf-idf vector -> UID -> PMID correspondence.
@@ -98,7 +95,7 @@ def generate_cluster_plot(file_path):
     plot.add_tools(hover)
     plot.scatter(x='x', y='y', source=source, color=colors, size=10, alpha=0.7)
 
-    return plot
+    return plot, len(metadata_corpus)
 
 
 # Retrieve UIDs of all the datasets in GEO database linked to given PMIDs.

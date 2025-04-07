@@ -13,6 +13,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 def index():
     plot_components = None
     error_message = None
+    dataset_number = None
     if request.method == 'POST':
         if 'file' not in request.files:
             error_message = "No file part."
@@ -24,13 +25,13 @@ def index():
                 file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
                 file.save(file_path)
                 try:
-                    script, div, cdn_jss = generate_html_cluster_plot(file_path)
+                    script, div, cdn_jss, dataset_number = generate_html_cluster_plot(file_path)
                     plot_components = {'script': script, 'div': div, 'cdn_jss': cdn_jss}
                 except Exception as e:
                     error_message = f"Error: {e}"
             else:
                 error_message = "Invalid file type. Please upload a .txt file."
-    return render_template('index.html', plot=plot_components, error=error_message)
+    return render_template('index.html', plot=plot_components, error=error_message, dataset_number=dataset_number)
 
 
 if __name__ == '__main__':

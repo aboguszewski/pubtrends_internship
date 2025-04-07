@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Linked Datasets Clusterer</title>
+    <title>PubTrends Internship</title>
+    <link href="https://resources.jetbrains.com/storage/ui/favicons/favicon.ico" rel="shortcut icon" sizes="16x16 32x32" type="image/x-icon">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     {% if plot %}
     <script type="text/javascript" src="{{ plot.cdn_jss|safe }}"></script>
@@ -32,6 +33,7 @@
         <div class="bokeh-wrapper">
             {{ plot.div|safe }}
         </div>
+        <p class="dataset-count">Found {{dataset_number}} linked datasets.</p>
     </div>
     {% endif %}
     </div>
