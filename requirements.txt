@@ -1,0 +1,7 @@
+Flask==3.1.0
+bokeh==3.7.2
+scikit-learn==1.6.1
+pandas==2.2.3
+numpy==2.2.4
+ratelimit==2.2.1
+requests==2.32.3
