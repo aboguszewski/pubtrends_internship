@@ -16,7 +16,7 @@ from bokeh.embed import components
 from bokeh.resources import CDN
 
 # I'm aware that putting API keys in a repository is not considered a good practice,
-# However considering it's private and the API is free I leave it here for the user's convenience.
+# However considering the API is free I leave it here for the user's convenience.
 API_KEY = '65c3f552e2772659f31d7bb26b7c60605d08'
 
 # API request frequency limit related constansts.
