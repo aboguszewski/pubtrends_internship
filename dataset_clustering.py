@@ -1,4 +1,5 @@
-import requests
+from requests import Session
+from ratelimit import limits, sleep_and_retry
 import xml.etree.ElementTree as et
 from bokeh.palettes import Paired
 from bokeh.transform import linear_cmap
@@ -14,11 +15,15 @@ from bokeh.models import ColumnDataSource, HoverTool
 from bokeh.embed import components
 from bokeh.resources import CDN
 
+# TODO: FIX CONSTANTS DESC
+API_KEY = '65c3f552e2772659f31d7bb26b7c60605d08'
+
+
 # Below are some constants used throughout the module.
 # Most of them are chosen arbitrarily, except N_COMPONENTS.
 # This constant defines the number of dimensions to which the original tf-idf vectors are reduced.
 # After testing, 100 seemed to be a reasonable number,
-# because it accounted for 93% of variation present in the vectors calculated from the example list.
+# because it accounted for 93% of the variation present in the vectors calculated from the example list.
 # Any bigger number resulted in diminishing returns.
 
 SEED = 42
@@ -28,7 +33,8 @@ MAX_CLUSTERS = 10
 N_COMPONENTS = 100
 KMEANS_N_INIT = 10
 TSNE_PERPLEXITY = 30
-
+MAX_CALLS = 10
+CALL_PERIOD = 1
 
 # Generate a cluster plot for the datasets linked to PMIDs listed in file_path.
 # Return components for embedding the plot in HTML.
@@ -50,12 +56,14 @@ def generate_cluster_plot(file_path):
             pmid = int(line)
             pmids.add(pmid)
 
+    session = Session()
+    print(f'PMIDs: {len(pmids)}')
     # Get all the datasets' UIDs linked to given PMID.
-    linked_datasets = get_linked_datasets(pmids)
-
+    linked_datasets = get_linked_datasets(pmids, session)
+    print(f'Datasets: {len(linked_datasets)}')
     # Create a corpus dictionary (with all datasets' metadata).
-    dataset_metadata = get_datasets_metadata(linked_datasets)
-
+    dataset_metadata = get_datasets_metadata(linked_datasets, session)
+    print(f'Datasets with metadata: {len(dataset_metadata)}')
     # Build metadata text corpus for tf-idf.
     metadata_corpus = list(dataset_metadata.values())
     corpus_index_to_uid = list(dataset_metadata.keys())  # For conserving tf-idf vector -> UID -> PMID correspondence.
@@ -93,7 +101,7 @@ def generate_cluster_plot(file_path):
 
 # Retrieve UIDs of all the datasets in GEO database linked to given PMIDs.
 # Return a dictionary with UID, PMID pairs.
-def get_linked_datasets(pmids):
+def get_linked_datasets(pmids, session):
     linked_dataset = {}  # key: UID of the linked dataset, value: PMID
     elink_query_url = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/elink.fcgi'
     params = {
@@ -101,12 +109,13 @@ def get_linked_datasets(pmids):
         'db': "gds",
         'linkname': 'pubmed_gds',
         'id': None,
-        'retmode': 'xml'
+        'retmode': 'xml',
+        'api_key': API_KEY
     }
 
     for pmid in pmids:
         params['id'] = pmid
-        response = requests.get(url=elink_query_url, params=params)
+        response = limited_get(url=elink_query_url, params=params, session=session)
         if response.status_code != 200:
             continue  # Skip the PMIDs that don't get a response.
 
@@ -122,20 +131,21 @@ def get_linked_datasets(pmids):
 
 # Retrieve 'Title', 'Organism', 'Summary', 'Experiment Type' and 'Overall Design' metadata fields for datasets.
 # Return a dictionary with UID, its concatenated metadata as a string pairs.
-def get_datasets_metadata(linked_datasets):
+def get_datasets_metadata(linked_datasets, session):
     datasets_metadata = {}  # key: dataset UID, value: metadata text (all fields combined)
 
     # Get accession key and 'Organism' field of the metadata for each dataset
     efetch_query_url = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi'
     params = {
         'db': 'gds',
-        'id': None
+        'id': None,
+        'api_key': API_KEY
     }
 
     accession_key = {}  # key: dataset UID, value: accession key
     for uid in linked_datasets.keys():
         params['id'] = uid
-        response = requests.get(url=efetch_query_url, params=params)
+        response = limited_get(url=efetch_query_url, params=params, session=session)
         if response.status_code != 200:
             continue  # Skip the UIDs that don't get a response.
 
@@ -161,18 +171,15 @@ def get_datasets_metadata(linked_datasets):
     geo_accession_url = 'https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi'
     params = {
         'form': 'xml',
-        'acc': None
+        'acc': None,
+        'api_key': API_KEY
     }
 
-    for uid in linked_datasets.keys():
-        if uid not in accession_key.keys():  # Accession key is not available.
-            _ = datasets_metadata.pop(uid)  # Drop UID, because retrieval of the majority of metadata failed.
-            continue
+    for uid in accession_key.keys():
         params['acc'] = accession_key[uid]
-        response = requests.get(url=geo_accession_url, params=params)
+        response = limited_get(url=geo_accession_url, params=params, session=session)
         if response.status_code != 200:
             _ = datasets_metadata.pop(uid)  # Drop UID, because retrieval of the majority of metadata failed.
-
             continue  # Skip the UIDs that don't get a response.
 
         # Retrieve the chosen text fields from the metadata.
@@ -195,12 +202,12 @@ def get_datasets_metadata(linked_datasets):
 
 
 # Find the first occurrence of a tag in a xml document and its embedded text.
-# Return the text stripped of whitespace (if the tag is not present in the document return None).
+# Return the text stripped of whitespace (if the tag is not present in the document return empty string).
 def get_text_from_xml(tag, xml):
     element = xml.find(f'.//{tag}')
     if element is not None and element.text is not None:
         return element.text.strip()
-    return None
+    return ''
 
 
 # Calculate tf-idf vectors, reduce dimensions and normalize them.
@@ -250,9 +257,10 @@ def reduce_to_2d(tf_idf_matrix):
         perplexity=min(TSNE_PERPLEXITY, len(tf_idf_matrix) - 1),
         random_state=SEED
     ).fit_transform(tf_idf_matrix)
-    x = []
-    y = []
-    for vector in visualization_vectors:
-        x.append(vector[0])
-        y.append(vector[1])
-    return x, y
+    return visualization_vectors[:, 0].tolist(), visualization_vectors[:, 1].tolist()
+
+
+@sleep_and_retry
+@limits(calls=MAX_CALLS, period=CALL_PERIOD)
+def limited_get(url, params, session):
+    return session.get(url=url, params=params)
