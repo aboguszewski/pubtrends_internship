@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Linked Datasets Clusterer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    {% if plot %}
+    <script type="text/javascript" src="{{ plot.cdn_jss|safe }}"></script>
+    {% endif %}
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Linked Datasets Clusterer</h1>
+        </header>
+
+    <form action="/" method="post" enctype="multipart/form-data" class="upload-form">
+        <h2>Upload a Text File</h2>
+        {% if error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
+        <div class="input-row">
+            <input type="file" name="file" accept=".txt" required>
+            <button type="submit">Upload</button>
+        </div>
+    </form>
+
+
+    {% if plot %}
+    <div class="plot-container">
+        {{ plot.script|safe }}
+        <div class="bokeh-wrapper">
+            {{ plot.div|safe }}
+        </div>
+    </div>
+    {% endif %}
+    </div>
+</body>
+</html>

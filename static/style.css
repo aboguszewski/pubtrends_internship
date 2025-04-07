@@ -1,0 +1,95 @@
+body {
+    margin: 0;
+    padding: 0;
+    font-family: Helvetica, sans-serif;
+    background-color: #f7f7f7;
+}
+
+.container {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 40px 20px;
+    text-align: center;
+}
+
+header {
+    background-color: #a6cee3;
+    padding: 20px;
+    border-radius: 10px;
+    margin-bottom: 30px;
+}
+
+header h1 {
+    margin: 0;
+    color: #1f78b4;
+}
+
+.upload-form {
+    background-color: #ffffff;
+    padding: 25px;
+    border-radius: 10px;
+    box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+    margin-bottom: 30px;
+    text-align: center;
+    max-width: 100%;
+}
+
+.upload-form input[type="file"] {
+    padding: 10px;
+    margin-top: 10px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.upload-form button {
+    background-color: #33a02c;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    margin-top: 15px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+.upload-form button:hover {
+    background-color: #2e8b24;
+}
+
+.error {
+    color: #e31a1c; /* red from Paired */
+    font-weight: bold;
+    margin-top: 10px;
+}
+
+.plot-container {
+    background-color: #ffffff;
+    padding: 25px;
+    border-radius: 10px;
+    box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+}
+
+.input-row {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+}
+
+.input-row input[type="file"] {
+    margin: 0;
+}
+
+.input-row button {
+    margin: 0;
+}
+
+.bokeh-wrapper {
+    display: flex;
+    justify-content: center;
+}
