@@ -7,7 +7,8 @@ UPLOAD_FOLDER = 'uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# TODO: CURRENTLY 3MIN 45S ON FULL LIST
+
+# TODO: CURRENTLY 3MIN 53S ON FULL LIST
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':

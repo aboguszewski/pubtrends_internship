@@ -1,20 +1,33 @@
 import requests
 import xml.etree.ElementTree as et
-from bokeh.palettes import Viridis256
+from bokeh.palettes import Paired
 from bokeh.transform import linear_cmap
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
-from sklearn.decomposition import PCA
+from sklearn.decomposition import TruncatedSVD
+from sklearn.manifold import TSNE
+from sklearn.preprocessing import Normalizer
+from sklearn.pipeline import make_pipeline
 from bokeh.plotting import figure
 from bokeh.models import ColumnDataSource, HoverTool
 from bokeh.embed import components
 from bokeh.resources import CDN
 
-from bokeh.plotting import show
+# Below are some constants used throughout the module.
+# Most of them are chosen arbitrarily, except N_COMPONENTS.
+# This constant defines the number of dimensions to which the original tf-idf vectors are reduced.
+# After testing, 100 seemed to be a reasonable number,
+# because it accounted for 93% of variation present in the vectors calculated from the example list.
+# Any bigger number resulted in diminishing returns.
 
-
-RANDOM_SEED = 42
+SEED = 42
+MIN_DF = 0.03
+MAX_DF = 0.95
+MAX_CLUSTERS = 10
+N_COMPONENTS = 100
+KMEANS_N_INIT = 10
+TSNE_PERPLEXITY = 30
 
 
 # Generate a cluster plot for the datasets linked to PMIDs listed in file_path.
@@ -43,39 +56,37 @@ def generate_cluster_plot(file_path):
     # Create a corpus dictionary (with all datasets' metadata).
     dataset_metadata = get_datasets_metadata(linked_datasets)
 
-    # Create a tf-idf vector for every dataset's metadata.
+    # Build metadata text corpus for tf-idf.
     metadata_corpus = list(dataset_metadata.values())
     corpus_index_to_uid = list(dataset_metadata.keys())  # For conserving tf-idf vector -> UID -> PMID correspondence.
-    vectorizer = TfidfVectorizer()
-    tf_idf_matrix = vectorizer.fit_transform(metadata_corpus)
 
-    # Perform clustering on the metadata tf-idf vectors.
-    cluster_labels = tf_idf_clustering(tf_idf_matrix)
+    # Calculate tf-idf, reduce dimensions and normalize.
+    normalized_reduced_matrix = tf_idf(metadata_corpus)
 
-    # Visualize the clustering.
-    pca = PCA(n_components=2)
-    reduced_vectors = pca.fit_transform(tf_idf_matrix.toarray())
+    # Cluster resulting vectors.
+    cluster_labels = cluster(normalized_reduced_matrix)
 
-    x = []
-    y = []
-    for vector in reduced_vectors:
-        x.append(vector[0])
-        y.append(vector[1])
+    # Reduce the vectors for plotting.
+    x, y = reduce_to_2d(normalized_reduced_matrix)
 
+    # Generate the plot.
+    plot = figure(title="Datasets' Clusters",
+                  x_axis_label='first t-SNE component',
+                  y_axis_label='second t-SNE component')
     source = ColumnDataSource(data={
         'x': x,
         'y': y,
-        'cluster_label': cluster_labels,
-        'pmid': [linked_datasets[corpus_index_to_uid[index]] for index in range(len(x))]
+        'cluster': cluster_labels,
+        'pmid': [linked_datasets[corpus_index_to_uid[index]] for index in range(len(metadata_corpus))]
     })
-    color_map = linear_cmap(field_name='cluster_label', palette=Viridis256, low=min(cluster_labels),
-                            high=max(cluster_labels))
-
-    plot = figure(title=f'Datasets Clustering - {max(cluster_labels) + 1} clusters')  # TODO: ADD DATASETS AND PMID COUNT TO TITLE
-    plot.scatter(x='x', y='y', size=10, color=color_map, alpha=0.7, source=source)
+    colors = linear_cmap(field_name='cluster',
+                         palette=Paired[max(max(cluster_labels), 3)],
+                         low=min(cluster_labels),
+                         high=max(cluster_labels))
     hover = HoverTool()
-    hover.tooltips = [('PMID', '@pmid'), ('Cluster', '@cluster_label')]
+    hover.tooltips = [('PMID', '@pmid'), ('Cluster', '@cluster')]
     plot.add_tools(hover)
+    plot.scatter(x='x', y='y', source=source, color=colors, size=10, alpha=0.7)
 
     return plot
 
@@ -154,9 +165,14 @@ def get_datasets_metadata(linked_datasets):
     }
 
     for uid in linked_datasets.keys():
+        if uid not in accession_key.keys():  # Accession key is not available.
+            _ = datasets_metadata.pop(uid)  # Drop UID, because retrieval of the majority of metadata failed.
+            continue
         params['acc'] = accession_key[uid]
         response = requests.get(url=geo_accession_url, params=params)
         if response.status_code != 200:
+            _ = datasets_metadata.pop(uid)  # Drop UID, because retrieval of the majority of metadata failed.
+
             continue  # Skip the UIDs that don't get a response.
 
         # Retrieve the chosen text fields from the metadata.
@@ -187,22 +203,56 @@ def get_text_from_xml(tag, xml):
     return None
 
 
-# Find the best K-Means clustering for the tf-idf vectors.
+# Calculate tf-idf vectors, reduce dimensions and normalize them.
+# Return resulting reduced and normalized tf-idf matrix.
+def tf_idf(metadata_corpus):
+    pipeline = make_pipeline(
+        TfidfVectorizer(min_df=MIN_DF, max_df=MAX_DF),
+        TruncatedSVD(n_components=N_COMPONENTS, random_state=SEED),
+        Normalizer())
+
+    return pipeline.fit_transform(metadata_corpus)
+
+
+# Cluster tf-idf vectors using k-means algorithm.
 # Return a list of cluster labels from the best clustering (labels are integers starting at 0).
-def tf_idf_clustering(tf_idf_matrix):
-    # Choose the best number of clusters based on the Silhouette Score.
+def cluster(tf_idf_matrix):
+    # Choose best k for k-means clustering.
     best_cluster_num = 2
     best_clustering_score = 0
-    cluster_number_range = [n for n in range(2, tf_idf_matrix.shape[0])]
+    cluster_number_range = [n for n in range(2, min(MAX_CLUSTERS + 1, len(tf_idf_matrix)))]
     for n in cluster_number_range:
-        cluster_labels = KMeans(n_clusters=n, random_state=RANDOM_SEED).fit_predict(tf_idf_matrix)
+        cluster_labels = KMeans(
+            n_clusters=n,
+            n_init=KMEANS_N_INIT,
+            random_state=SEED
+        ).fit_predict(tf_idf_matrix)
 
         silhouette_average = silhouette_score(tf_idf_matrix, cluster_labels)
         if silhouette_average > best_clustering_score:
             best_cluster_num = n
             best_clustering_score = silhouette_average
 
-    # Perform clustering with the best number of clusters.
-    best_cluster_labels = KMeans(n_clusters=best_cluster_num, random_state=RANDOM_SEED).fit_predict(tf_idf_matrix)
+    # Cluster.
+    cluster_labels = KMeans(
+        n_clusters=best_cluster_num,
+        n_init=KMEANS_N_INIT,
+        random_state=SEED
+    ).fit_predict(tf_idf_matrix)
+    return cluster_labels
 
-    return best_cluster_labels
+
+# Reduce tf-idf vectors to 2 dimensions using t-SNE.
+# Return lists x and y, where i-th reduced vector = [x[i], y[i]].
+def reduce_to_2d(tf_idf_matrix):
+    visualization_vectors = TSNE(
+        n_components=2,
+        perplexity=min(TSNE_PERPLEXITY, len(tf_idf_matrix) - 1),
+        random_state=SEED
+    ).fit_transform(tf_idf_matrix)
+    x = []
+    y = []
+    for vector in visualization_vectors:
+        x.append(vector[0])
+        y.append(vector[1])
+    return x, y
